@@ -1,0 +1,766 @@
+//LEAD MANAGEMENT SYSTEM
+
+#include <bits/stdc++.h>
+using namespace std;
+
+string getCurrentDate() {
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    
+    string day = to_string(ltm->tm_mday);
+    string month = to_string(1 + ltm->tm_mon);
+    string year = to_string(1900 + ltm->tm_year);
+    
+    return day + "/" + month + "/" + year;
+}
+
+pair<int, int> getMonthDay(const string& date) {
+    size_t firstSlash = date.find('/');
+    size_t secondSlash = date.find('/', firstSlash + 1);
+    
+    int day = stoi(date.substr(0, firstSlash));
+    int month = stoi(date.substr(firstSlash + 1, secondSlash - firstSlash - 1));
+    
+    return {month, day};
+}
+
+struct Order {
+    string productName;
+    string date;
+    
+    Order(string pName, string d) : productName(pName), date(d) {}
+};
+
+class User {
+public:
+User() : name(""), email(""), password(""), score(0), membership("General"), birthday("") {}
+    string name;
+    string email;
+    string password;
+    double score;
+    vector<string> savedItems;
+    vector<string> cart;
+    string membership;
+    vector<string> messages;
+    vector<Order> orderHistory;
+    string birthday;
+    map<string, string> specialPeopleBirthdays;
+
+    User(string name, string email, string password, string bday) 
+        : name(name), email(email), password(password), score(0), membership("General"), birthday(bday) {}
+
+    void updateScore(double points) {
+        score += points;
+        updateMembership();
+    }
+
+    void updateMembership() {
+        if (score >= 150) {
+            membership = "Diamond";
+        } else if (score >= 100) {
+            membership = "Gold";
+        } else {
+            membership = "General";
+        }
+    }
+
+    void addToCart(string item) {
+        cart.push_back(item);
+    }
+
+    void saveItem(string item) {
+        savedItems.push_back(item);
+    }
+    
+    void addMessage(string message) {
+        if(find(messages.begin(),messages.end(),message)==messages.end()){        messages.push_back(message);
+        }
+    }
+    
+    void addOrder(string productName) {
+        orderHistory.push_back(Order(productName, getCurrentDate()));
+    }
+    
+    void addSpecialPersonBirthday(string name, string birthday) {
+        specialPeopleBirthdays[name] = birthday;
+    }
+};
+
+class Product {
+public:
+  Product() : name(""), costPrice(0), sellingPrice(0), unitsSold(0), score(0), category("Low") {}
+    string name;
+    double costPrice;
+    double sellingPrice;
+    int unitsSold;
+    double score;
+    string category;
+
+    Product(string name, double costPrice) 
+        : name(name), costPrice(costPrice), sellingPrice(1.25 * costPrice), unitsSold(0), score(0), category("Low") {}
+
+    void updateScore(double points) {
+        score += points;
+        updateCategory();
+    }
+
+    void updateSellingPrice() {
+        if (unitsSold >= 0.7 * costPrice) {
+            sellingPrice = 1.15 * costPrice;
+        } else if (unitsSold >= 1.5 * costPrice) {
+            sellingPrice = 1.05 * costPrice;
+        }
+    }
+    
+    void updateCategory() {
+        if (score >= 50) {
+            category = "High";
+        } else if (score >= 20) {
+            category = "Medium";
+        } else {
+            category = "Low";
+        }
+    }
+};
+
+class LeadManagementSystem {
+private:
+    map<string, User> users;
+    map<string, Product> products;
+    map<string, int> returnCount;
+    string loggedInUser;
+    bool isAdmin;
+    string adminPassword;
+
+    void checkDateBasedMessages() {
+        if (!isLoggedIn() || isAdmin) return;
+        
+        User &user = users[loggedInUser];
+        string currentDate = getCurrentDate();
+        auto [currentMonth, currentDay] = getMonthDay(currentDate);
+        
+        for (const Order& order : user.orderHistory) {
+            auto [orderMonth, orderDay] = getMonthDay(order.date);
+            
+            if (currentMonth == orderMonth ) {
+                string reminder = "Last year in this month, you ordered " + order.productName + ". Would you like to order it again?";
+                user.addMessage(reminder);
+            }
+        }
+        
+        if (!user.birthday.empty()) {
+            auto [birthMonth, birthDay] = getMonthDay(user.birthday);
+            
+            int daysInMonth[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+            
+            int targetDay = birthDay - 10;
+            int targetMonth = birthMonth;
+            
+            if (currentMonth == targetMonth ) {
+                string reminder = "It's your birthday month! Would you like to order something special?";
+                user.addMessage(reminder);
+            }
+        }
+        
+        for (const auto& [name, bday] : user.specialPeopleBirthdays) {
+            auto [birthMonth, birthDay] = getMonthDay(bday);
+            
+            int daysInMonth[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+            
+            int targetDay = birthDay - 10;
+            int targetMonth = birthMonth;
+            
+            if (currentMonth == targetMonth && currentDay == targetDay) {
+                string reminder = name + "'s birthday is in this month! Would you like to order something for them?";
+                user.addMessage(reminder);
+            }
+        }
+    }
+
+public:
+    LeadManagementSystem() {
+        adminPassword = "55735573";
+        isAdmin = false;
+    }
+
+    void signup(string name, string email, string password, string birthday) {
+        if (users.find(email) == users.end()) {
+            users[email] = User(name, email, password, birthday);
+            cout << "Signup successful! Welcome, " << name << "!\n";
+        } else {
+            cout << "User already exists with this email!\n";
+        }
+    }
+
+    bool loginUser(string email, string password) {
+        if (users.find(email) != users.end() && users[email].password == password) {
+            loggedInUser = email;
+            isAdmin = false;
+            cout << "Login successful! Welcome, " << users[email].name << "!\n";
+            
+            checkDateBasedMessages();
+            
+            User &user = users[loggedInUser];
+            if (!user.messages.empty()) {
+                cout << "\n===== Your Messages =====\n";
+                for (const string& msg : user.messages) {
+                    cout << "- " << msg << "\n";
+                }
+                cout << "========================\n";
+            }
+            
+            return true;
+        } else {
+            cout << "Invalid email or password!\n";
+            return false;
+        }
+    }
+
+    bool loginAdmin(string password) {
+        if (password == adminPassword) {
+            isAdmin = true;
+            loggedInUser = "";
+            cout << "Admin login successful!\n";
+            return true;
+        } else {
+            cout << "Invalid admin password!\n";
+            return false;
+        }
+    }
+
+    void logout() {
+        loggedInUser = "";
+        isAdmin = false;
+        cout << "Logged out successfully!\n";
+    }
+
+    bool isLoggedIn() {
+        return !loggedInUser.empty() || isAdmin;
+    }
+    
+    bool userIsAdmin() {
+        return isAdmin;
+    }
+
+    void viewItems() {
+        if (products.empty()) {
+            cout << "No products available.\n";
+            return;
+        }
+        
+        cout << "\n===== Available Items =====\n";
+        cout << left << setw(20) << "Product Name" << setw(15) << "Price" << "\n";
+        cout << "-------------------------------------\n";
+        
+        for (const auto& [name, product] : products) {
+            cout << left << setw(20) << name << setw(15) << fixed << setprecision(2) << product.sellingPrice << "\n";
+        }
+        
+        cout << "=============================\n";
+    }
+
+    void buyItem(string productName) {
+        if (isAdmin) {
+            cout << "Admin cannot purchase items. Please login as a user.\n";
+            return;
+        }
+        
+        if (!loggedInUser.empty() && products.find(productName) != products.end()) {
+            User &user = users[loggedInUser];
+            Product &product = products[productName];
+
+            user.updateScore(0.05 * product.costPrice);
+            product.updateScore(0.005 * product.costPrice);
+
+            product.unitsSold++;
+            product.updateSellingPrice();
+            
+            user.addOrder(productName);
+
+            cout << "Purchase successful! You bought: " << productName << "\n";
+        } else {
+            cout << "User not logged in or product not found!\n";
+        }
+    }
+
+    void viewCart() {
+        if (isAdmin) {
+            cout << "Admin doesn't have a cart.\n";
+            return;
+        }
+        
+        if (!loggedInUser.empty()) {
+            User &user = users[loggedInUser];
+            
+            if (user.cart.empty()) {
+                cout << "Your cart is empty.\n";
+                return;
+            }
+            
+            cout << "\n===== Your Cart =====\n";
+            for (const string& item : user.cart) {
+                cout << "- " << item << " ($" << fixed << setprecision(2) << products[item].sellingPrice << ")\n";
+            }
+            
+            double total = 0;
+            for (const string& item : user.cart) {
+                total += products[item].sellingPrice;
+            }
+            
+            cout << "---------------------\n";
+            cout << "Total: $" << fixed << setprecision(2) << total << "\n";
+            cout << "=====================\n";
+        } else {
+            cout << "User not logged in!\n";
+        }
+    }
+
+    void viewSavedItems() {
+        if (isAdmin) {
+            cout << "Admin doesn't have saved items.\n";
+            return;
+        }
+        
+        if (!loggedInUser.empty()) {
+            User &user = users[loggedInUser];
+            
+            if (user.savedItems.empty()) {
+                cout << "You have no saved items.\n";
+                return;
+            }
+            
+            cout << "\n===== Your Saved Items =====\n";
+            for (const string& item : user.savedItems) {
+                cout << "- " << item << " ($" << fixed << setprecision(2) << products[item].sellingPrice << ")\n";
+            }
+            cout << "===========================\n";
+        } else {
+            cout << "User not logged in!\n";
+        }
+    }
+
+    void orderCart() {
+        if (isAdmin) {
+            cout << "Admin cannot order items. Please login as a user.\n";
+            return;
+        }
+        
+        if (!loggedInUser.empty()) {
+            User &user = users[loggedInUser];
+            
+            if (user.cart.empty()) {
+                cout << "Your cart is empty. Nothing to order.\n";
+                return;
+            }
+            
+            for (const string& productName : user.cart) {
+                if (products.find(productName) != products.end()) {
+                    Product &product = products[productName];
+                    
+                    user.updateScore(0.05 * product.costPrice);
+                    product.updateScore(0.005 * product.costPrice);
+                    
+                    product.unitsSold++;
+                    product.updateSellingPrice();
+                    
+                    user.addOrder(productName);
+                }
+            }
+            
+            double total = 0;
+            for (const string& item : user.cart) {
+                total += products[item].sellingPrice;
+            }
+            
+            cout << "Order placed successfully! Total: $" << fixed << setprecision(2) << total << "\n";
+            
+            user.cart.clear();
+        } else {
+            cout << "User not logged in!\n";
+        }
+    }
+
+    void addSpecialPersonBirthday(string name, string birthday) {
+        if (isAdmin) {
+            cout << "Admin cannot add special person birthdays.\n";
+            return;
+        }
+        
+        if (!loggedInUser.empty()) {
+            User &user = users[loggedInUser];
+            user.addSpecialPersonBirthday(name, birthday);
+            cout << name << "'s birthday added successfully!\n";
+        } else {
+            cout << "User not logged in!\n";
+        }
+    }
+
+    void viewMessages() {
+        if (isAdmin) {
+            cout << "Admin doesn't have messages.\n";
+            return;
+        }
+        
+        if (!loggedInUser.empty()) {
+            User &user = users[loggedInUser];
+            
+            if (user.messages.empty()) {
+                cout << "You have no messages.\n";
+                return;
+            }
+            
+            cout << "\n===== Your Messages =====\n";
+            for (int i = 0; i < user.messages.size(); i++) {
+                cout << (i+1) << ". " << user.messages[i] << "\n";
+            }
+            cout << "=======================\n";
+        } else {
+            cout << "User not logged in!\n";
+        }
+    }
+
+    void addProduct(string name, double costPrice) {
+        if (!isAdmin) {
+            cout << "Only admin can add products!\n";
+            return;
+        }
+        
+        products[name] = Product(name, costPrice);
+        cout << "Product added successfully!\n";
+    }
+
+    void deleteProduct(string name) {
+        if (!isAdmin) {
+            cout << "Only admin can delete products!\n";
+            return;
+        }
+        
+        if (products.find(name) != products.end()) {
+            products.erase(name);
+            cout << "Product deleted successfully!\n";
+        } else {
+            cout << "Product not found!\n";
+        }
+    }
+
+    void viewUsersByCategory() {
+        if (!isAdmin) {
+            cout << "Only admin can view user categories!\n";
+            return;
+        }
+        
+        map<string, vector<pair<string, double>>> usersByCategory;
+        
+        for (const auto& [email, user] : users) {
+            usersByCategory[user.membership].push_back({user.name, user.score});
+        }
+        
+        cout << "\n===== Users by Category =====\n";
+        
+        for (const auto& category : {"Diamond", "Gold", "General"}) {
+            cout << "\n" << category << " Members:\n";
+            cout << "------------------\n";
+            
+            if (usersByCategory[category].empty()) {
+                cout << "No users in this category.\n";
+            } else {
+                for (const auto& [name, score] : usersByCategory[category]) {
+                    cout << "Name: " << name << ", Score: " << score << "\n";
+                }
+            }
+        }
+        
+        cout << "============================\n";
+    }
+
+    void viewProductsByCategory() {
+        if (!isAdmin) {
+            cout << "Only admin can view product categories!\n";
+            return;
+        }
+        
+        map<string, vector<pair<string, double>>> productsByCategory;
+        
+        for (const auto& [name, product] : products) {
+            productsByCategory[product.category].push_back({name, product.score});
+        }
+        
+        cout << "\n===== Products by Category =====\n";
+        
+        for (const auto& category : {"High", "Medium", "Low"}) {
+            cout << "\n" << category << " Scoring Products:\n";
+            cout << "----------------------\n";
+            
+            if (productsByCategory[category].empty()) {
+                cout << "No products in this category.\n";
+            } else {
+                for (const auto& [name, score] : productsByCategory[category]) {
+                    cout << "Product: " << name << ", Score: " << score << "\n";
+                }
+            }
+        }
+        
+        cout << "==============================\n";
+    }
+
+    void addToCart(string productName) {
+        if (isAdmin) {
+            cout << "Admin cannot add items to cart.";
+            return;
+        }
+        
+        if (!loggedInUser.empty() && products.find(productName) != products.end()) {
+            User &user = users[loggedInUser];
+            Product &product = products[productName];
+
+            user.addToCart(productName);
+
+            user.updateScore(0.03 * product.costPrice);
+            product.updateScore(0.003 * product.costPrice);
+
+            cout << "Item added to cart successfully!\n";
+        } else {
+            cout << "User not logged in or product not found!\n";
+        }
+    }
+
+    void saveItem(string productName) {
+        if (isAdmin) {
+            cout << "Admin cannot save items.\n";
+            return;
+        }
+        
+        if (!loggedInUser.empty() && products.find(productName) != products.end()) {
+            User &user = users[loggedInUser];
+            Product &product = products[productName];
+
+            user.saveItem(productName);
+
+            user.updateScore(0.02 * product.costPrice);
+            product.updateScore(0.002 * product.costPrice);
+
+            cout << "Item saved successfully!\n";
+        } else {
+            cout << "User not logged in or product not found!\n";
+        }
+    }
+
+    void displayDashboard() {
+        if (isAdmin) {
+            cout << "\n===== Admin Dashboard =====\n";
+            cout << "Total Users: " << users.size() << "\n";
+            cout << "Total Products: " << products.size() << "\n";
+            cout << "=========================\n";
+        } else if (!loggedInUser.empty()) {
+            User &user = users[loggedInUser];
+            cout << "\n===== User Dashboard =====\n";
+            cout << "Name: " << user.name << "\n";
+            cout << "Email: " << user.email << "\n";
+            cout << "Score: " << user.score << "\n";
+            cout << "Membership: " << user.membership << "\n";
+            cout << "Birthday: " << user.birthday << "\n";
+            
+            cout << "Items in Cart: " << user.cart.size() << "\n";
+            cout << "Saved Items: " << user.savedItems.size() << "\n";
+            cout << "Unread Messages: " << user.messages.size() << "\n";
+            cout << "Special Person Birthdays: " << user.specialPeopleBirthdays.size() << "\n";
+            
+            cout << "=====================\n";
+        } else {
+            cout << "You are not logged in!\n";
+        }
+    }
+};
+
+void showUserMenu() {
+    cout << "\n===== User Menu =====\n";
+    cout << "1. View Items\n";
+    cout << "2. Buy Item\n";
+    cout << "3. Add to Cart\n";
+    cout << "4. View Cart\n";
+    cout << "5. Order Cart\n";
+    cout << "6. Save Item\n";
+    cout << "7. View Saved Items\n";
+    cout << "8. View Messages\n";
+    cout << "9. Add Special Person's Birthday\n";
+    cout << "10. View Dashboard\n";
+    cout << "11. Logout\n";
+}
+
+void showAdminMenu() {
+    cout << "\n===== Admin Menu =====\n";
+    cout << "1. Add Product\n";
+    cout << "2. Delete Product\n";
+    cout << "3. View All Products\n";
+    cout << "4. View Users by Category\n";
+    cout << "5. View Products by Category\n";
+    cout << "6. View Dashboard\n";
+    cout << "7. Logout\n";
+}
+
+void showMainMenu() {
+    cout << "\n===== Lead Management System =====\n";
+    cout << "1. User Signup\n";
+    cout << "2. User Login\n";
+    cout << "3. Admin Login\n";
+    cout << "4. Exit\n";
+}
+
+int main() {
+    
+    
+    LeadManagementSystem lms;
+    int choice;
+    string name, email, password, productName, birthday;
+    double costPrice;
+
+    while (true) {
+        if (lms.isLoggedIn()) {
+            if (lms.userIsAdmin()) {
+                showAdminMenu();
+                cin >> choice;
+                
+                switch (choice) {
+                    case 1:
+                        cout << "Enter product name: ";
+                        cin >> productName;
+                        cout << "Enter cost price: ";
+                        cin >> costPrice;
+                        lms.addProduct(productName, costPrice);
+                        break;
+                        
+                    case 2:
+                        cout << "Enter product name: ";
+                        cin >> productName;
+                        lms.deleteProduct(productName);
+                        break;
+                        
+                    case 3:
+                        lms.viewItems();
+                        break;
+                        
+                    case 4:
+                        lms.viewUsersByCategory();
+                        break;
+                        
+                    case 5:
+                        lms.viewProductsByCategory();
+                        break;
+                        
+                    case 6:
+                        lms.displayDashboard();
+                        break;
+                        
+                    case 7:
+                        lms.logout();
+                        break;
+                        
+                    default:
+                        cout << "Invalid choice! Try again.\n";
+                }
+            } else {
+                showUserMenu();
+                cin >> choice;
+                
+                switch (choice) {
+                    case 1:
+                        lms.viewItems();
+                        break;
+                        
+                    case 2:
+                        cout << "Enter product name: ";
+                        cin >> productName;
+                        lms.buyItem(productName);
+                        break;
+                        
+                    case 3:
+                        cout << "Enter product name: ";
+                        cin >> productName;
+                        lms.addToCart(productName);
+                        break;
+                        
+                    case 4:
+                        lms.viewCart();
+                        break;
+                        
+                    case 5:
+                        lms.orderCart();
+                        break;
+                        
+                    case 6:
+                        cout << "Enter product name: ";
+                        cin >> productName;
+                        lms.saveItem(productName);
+                        break;
+                        
+                    case 7:
+                        lms.viewSavedItems();
+                        break;
+                        
+                    case 8:
+                        lms.viewMessages();
+                        break;
+                        
+                    case 9:
+                        cout << "Enter person's name: ";
+                        cin >> name;
+                        cout << "Enter their birthday (DD/MM): ";
+                        cin >> birthday;
+                        lms.addSpecialPersonBirthday(name, birthday);
+                        break;
+                        
+                    case 10:
+                        lms.displayDashboard();
+                        break;
+                        
+                    case 11:
+                        lms.logout();
+                        break;
+                        
+                    default:
+                        cout << "Invalid choice! Try again.\n";
+                }
+            }
+        } else {
+            showMainMenu();
+            cin >> choice;
+            
+            switch (choice) {
+                case 1:
+                    cout << "Enter name: ";
+                    cin >> name;
+                    cout << "Enter email: ";
+                    cin >> email;
+                    cout << "Enter password: ";
+                    cin >> password;
+                    cout << "Enter birthday (DD/MM): ";
+                    cin >> birthday;
+                    lms.signup(name, email, password, birthday);
+                    break;
+                    
+                case 2:
+                    cout << "Enter email: ";
+                    cin >> email;
+                    cout << "Enter password: ";
+                    cin >> password;
+                    lms.loginUser(email, password);
+                    break;
+                    
+                case 3:
+                    cout << "Enter admin password: ";
+                    cin >> password;
+                    lms.loginAdmin(password);
+                    break;
+                    
+                case 4:
+                    cout << "Exiting...\n";
+                    return 0;
+                    
+                default:
+                    cout << "Invalid choice! Try again.\n";
+            }
+        }
+    }
+
+    return 0;
+}
